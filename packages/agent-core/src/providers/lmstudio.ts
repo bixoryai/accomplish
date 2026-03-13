@@ -1,7 +1,7 @@
 import type { ToolSupportStatus } from '../common/types/providerSettings.js';
 import type { LMStudioConfig } from '../common/types/provider.js';
 import { fetchWithTimeout } from '../utils/fetch.js';
-import { validateHttpUrl } from '../utils/url.js';
+import { validateHttpUrl, normalizeBaseUrl } from '../utils/url.js';
 import { sanitizeString } from '../utils/sanitize.js';
 import { testLMStudioModelToolSupport } from './tool-support-testing.js';
 
@@ -84,9 +84,11 @@ export async function testLMStudioConnection(
     };
   }
 
+  const normalizedUrl = normalizeBaseUrl(sanitizedUrl);
+
   try {
     const response = await fetchWithTimeout(
-      `${sanitizedUrl}/v1/models`,
+      `${normalizedUrl}/v1/models`,
       { method: 'GET' },
       timeoutMs,
     );
@@ -113,7 +115,7 @@ export async function testLMStudioConnection(
 
     for (const m of rawModels) {
       const displayName = formatModelDisplayName(m.id);
-      const toolSupport = await testLMStudioModelToolSupport(sanitizedUrl, m.id);
+      const toolSupport = await testLMStudioModelToolSupport(normalizedUrl, m.id);
 
       models.push({
         id: m.id,
@@ -154,8 +156,25 @@ export async function fetchLMStudioModels(
 ): Promise<LMStudioConnectionResult> {
   const { baseUrl, timeoutMs = LMSTUDIO_REQUEST_TIMEOUT_MS } = options;
 
+  const sanitizedUrl = sanitizeString(baseUrl, 'lmstudioUrl', 256);
+
   try {
-    const response = await fetchWithTimeout(`${baseUrl}/v1/models`, { method: 'GET' }, timeoutMs);
+    validateHttpUrl(sanitizedUrl, 'LM Studio URL');
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : 'Invalid URL format',
+    };
+  }
+
+  const normalizedUrl = normalizeBaseUrl(sanitizedUrl);
+
+  try {
+    const response = await fetchWithTimeout(
+      `${normalizedUrl}/v1/models`,
+      { method: 'GET' },
+      timeoutMs,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -172,7 +191,7 @@ export async function fetchLMStudioModels(
 
     for (const m of rawModels) {
       const displayName = formatModelDisplayName(m.id);
-      const toolSupport = await testLMStudioModelToolSupport(baseUrl, m.id);
+      const toolSupport = await testLMStudioModelToolSupport(normalizedUrl, m.id);
 
       models.push({
         id: m.id,

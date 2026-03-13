@@ -1,7 +1,7 @@
 import type { ToolSupportStatus } from '../common/types/providerSettings.js';
 
 import { fetchWithTimeout } from '../utils/fetch.js';
-import { validateHttpUrl } from '../utils/url.js';
+import { validateHttpUrl, normalizeBaseUrl } from '../utils/url.js';
 import { sanitizeString } from '../utils/sanitize.js';
 import { testOllamaModelToolSupport } from './tool-support-testing.js';
 
@@ -52,9 +52,11 @@ export async function testOllamaConnection(url: string): Promise<OllamaConnectio
     return { success: false, error: e instanceof Error ? e.message : 'Invalid URL format' };
   }
 
+  const normalizedUrl = normalizeBaseUrl(sanitizedUrl);
+
   try {
     const response = await fetchWithTimeout(
-      `${sanitizedUrl}/api/tags`,
+      `${normalizedUrl}/api/tags`,
       { method: 'GET' },
       OLLAMA_API_TIMEOUT_MS,
     );
@@ -77,7 +79,7 @@ export async function testOllamaConnection(url: string): Promise<OllamaConnectio
       const batch = rawModels.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(
         batch.map(async (m) => {
-          const toolSupport = await testOllamaModelToolSupport(sanitizedUrl, m.name);
+          const toolSupport = await testOllamaModelToolSupport(normalizedUrl, m.name);
           return { id: m.name, displayName: m.name, size: m.size, toolSupport };
         }),
       );

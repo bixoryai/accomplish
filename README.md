@@ -19,7 +19,7 @@
 
 # Accomplish™ - Open Source AI Desktop Agent
 
-Accomplish is an open source AI desktop agent that automates file management, document creation, and browser tasks locally on your machine. Bring your own API keys (OpenAI, Anthropic, Google, xAI) or run local models via Ollama.
+Accomplish is an open source AI desktop agent that automates file management, document creation, and browser tasks locally on your machine. Bring your own API keys (OpenAI, Anthropic, Google, xAI) or run local models via Ollama or LM Studio.
 
 <p align="center">
   <strong>Runs locally on your machine. Bring your own API keys or local models. MIT licensed.</strong>
@@ -69,7 +69,7 @@ Accomplish is an open source AI desktop agent that automates file management, do
 <div align="left">
 
 - Use your own API key (OpenAI, Anthropic, etc.)
-- Or run with [Ollama](https://ollama.com) (no API key needed)
+- Or run with [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai) (no API key needed)
 - No subscription, no upsell
 - It's a tool—not a service
 
@@ -221,7 +221,10 @@ A quick look at Accomplish on macOS, plus a short demo video.
 Yes. Accomplish runs locally on your machine and you control which folders it can access.
 
 **Do I need an API key?**  
-You can use your own API keys (OpenAI, Anthropic, Google, xAI, etc.) or run local models via Ollama.
+You can use your own API keys (OpenAI, Anthropic, Google, xAI, etc.) or run fully local models with no API key using [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai).
+
+**Can it run without internet access?**  
+Yes — when using Ollama or LM Studio, no data leaves your machine. Configure either in the provider settings by pointing Accomplish at `http://localhost:11434` (Ollama) or `http://localhost:1234` (LM Studio).
 
 **Is Accomplish free?**  
 Yes. Accomplish is open source and MIT licensed.

@@ -9,6 +9,7 @@ import type { ProviderSettings } from '../common/types/providerSettings.js';
 import { ZAI_ENDPOINTS, DEFAULT_PROVIDERS, PROVIDER_ID_TO_OPENCODE } from '../common/index.js';
 import type { ProviderConfig, ProviderModelConfig } from './config-generator.js';
 import { ensureAzureFoundryProxy, ensureMoonshotProxy } from './proxies/index.js';
+import { normalizeBaseUrl, validateHttpUrl } from '../utils/url.js';
 import {
   getOllamaConfig,
   getLMStudioConfig,
@@ -159,44 +160,62 @@ export async function buildProviderConfigs(
       );
       const ollamaSupportsTools =
         (ollamaModelInfo as { toolSupport?: string })?.toolSupport === 'supported';
-      // Register model with both formats for compatibility
-      // Some code paths use "modelId" while others use "ollama/modelId"
-      providerConfigs.push({
-        id: 'ollama',
-        npm: '@ai-sdk/openai-compatible',
-        name: 'Ollama (local)',
-        options: {
-          baseURL: `${ollamaProvider.credentials.serverUrl}/v1`,
-        },
-        models: {
-          [modelId]: { name: modelId, tools: ollamaSupportsTools },
-          [`ollama/${modelId}`]: { name: modelId, tools: ollamaSupportsTools },
-        },
-      });
-      console.log(
-        `[OpenCode Config Builder] Ollama configured: ${modelId} (tools: ${ollamaSupportsTools})`,
-      );
+      let ollamaConnectedBaseUrl: string | null = null;
+      try {
+        validateHttpUrl(ollamaProvider.credentials.serverUrl, 'Ollama server URL');
+        ollamaConnectedBaseUrl = normalizeBaseUrl(ollamaProvider.credentials.serverUrl);
+      } catch (e) {
+        console.warn('[OpenCode Config Builder] Invalid Ollama server URL, skipping:', e);
+      }
+      if (ollamaConnectedBaseUrl !== null) {
+        // Register model with both formats for compatibility
+        // Some code paths use "modelId" while others use "ollama/modelId"
+        providerConfigs.push({
+          id: 'ollama',
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Ollama (local)',
+          options: {
+            baseURL: `${ollamaConnectedBaseUrl}/v1`,
+          },
+          models: {
+            [modelId]: { name: modelId, tools: ollamaSupportsTools },
+            [`ollama/${modelId}`]: { name: modelId, tools: ollamaSupportsTools },
+          },
+        });
+        console.log(
+          `[OpenCode Config Builder] Ollama configured: ${modelId} (tools: ${ollamaSupportsTools})`,
+        );
+      }
     }
   } else {
     const ollamaConfig = getOllamaConfig();
     const ollamaModels = ollamaConfig?.models;
     if (ollamaConfig?.enabled && ollamaModels && ollamaModels.length > 0) {
-      const models: Record<string, ProviderModelConfig> = {};
-      for (const model of ollamaModels) {
-        const legacyToolSupport =
-          model.toolSupport === 'supported' || model.toolSupport === undefined;
-        // Register both formats for compatibility
-        models[model.id] = { name: model.displayName, tools: legacyToolSupport };
-        models[`ollama/${model.id}`] = { name: model.displayName, tools: legacyToolSupport };
+      let ollamaBaseUrl: string | null = null;
+      try {
+        validateHttpUrl(ollamaConfig.baseUrl, 'Ollama base URL');
+        ollamaBaseUrl = normalizeBaseUrl(ollamaConfig.baseUrl);
+      } catch (e) {
+        console.warn('[OpenCode Config Builder] Invalid Ollama base URL, skipping:', e);
       }
-      providerConfigs.push({
-        id: 'ollama',
-        npm: '@ai-sdk/openai-compatible',
-        name: 'Ollama (local)',
-        options: { baseURL: `${ollamaConfig.baseUrl}/v1` },
-        models,
-      });
-      console.log('[OpenCode Config Builder] Ollama (legacy) configured:', Object.keys(models));
+      if (ollamaBaseUrl !== null) {
+        const models: Record<string, ProviderModelConfig> = {};
+        for (const model of ollamaModels) {
+          const legacyToolSupport =
+            model.toolSupport === 'supported' || model.toolSupport === undefined;
+          // Register both formats for compatibility
+          models[model.id] = { name: model.displayName, tools: legacyToolSupport };
+          models[`ollama/${model.id}`] = { name: model.displayName, tools: legacyToolSupport };
+        }
+        providerConfigs.push({
+          id: 'ollama',
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Ollama (local)',
+          options: { baseURL: `${ollamaBaseUrl}/v1` },
+          models,
+        });
+        console.log('[OpenCode Config Builder] Ollama (legacy) configured:', Object.keys(models));
+      }
     }
   }
 
@@ -391,19 +410,28 @@ export async function buildProviderConfigs(
     litellmProvider.selectedModelId
   ) {
     const litellmApiKey = getApiKey('litellm');
-    providerConfigs.push({
-      id: 'litellm',
-      npm: '@ai-sdk/openai-compatible',
-      name: 'LiteLLM',
-      options: {
-        baseURL: `${litellmProvider.credentials.serverUrl}/v1`,
-        ...(litellmApiKey ? { apiKey: litellmApiKey } : {}),
-      },
-      models: {
-        [litellmProvider.selectedModelId]: { name: litellmProvider.selectedModelId, tools: true },
-      },
-    });
-    console.log('[OpenCode Config Builder] LiteLLM configured:', litellmProvider.selectedModelId);
+    let litellmBaseUrl: string | null = null;
+    try {
+      validateHttpUrl(litellmProvider.credentials.serverUrl, 'LiteLLM server URL');
+      litellmBaseUrl = normalizeBaseUrl(litellmProvider.credentials.serverUrl);
+    } catch (e) {
+      console.warn('[OpenCode Config Builder] Invalid LiteLLM server URL, skipping:', e);
+    }
+    if (litellmBaseUrl !== null) {
+      providerConfigs.push({
+        id: 'litellm',
+        npm: '@ai-sdk/openai-compatible',
+        name: 'LiteLLM',
+        options: {
+          baseURL: `${litellmBaseUrl}/v1`,
+          ...(litellmApiKey ? { apiKey: litellmApiKey } : {}),
+        },
+        models: {
+          [litellmProvider.selectedModelId]: { name: litellmProvider.selectedModelId, tools: true },
+        },
+      });
+      console.log('[OpenCode Config Builder] LiteLLM configured:', litellmProvider.selectedModelId);
+    }
   }
 
   // LM Studio provider
@@ -418,36 +446,57 @@ export async function buildProviderConfigs(
       (m) => m.id === lmstudioProvider.selectedModelId || m.id === modelId,
     );
     const supportsTools = (modelInfo as { toolSupport?: string })?.toolSupport === 'supported';
-    providerConfigs.push({
-      id: 'lmstudio',
-      npm: '@ai-sdk/openai-compatible',
-      name: 'LM Studio',
-      options: {
-        baseURL: `${lmstudioProvider.credentials.serverUrl}/v1`,
-      },
-      models: {
-        [modelId]: { name: modelId, tools: supportsTools },
-      },
-    });
-    console.log(
-      `[OpenCode Config Builder] LM Studio configured: ${modelId} (tools: ${supportsTools})`,
-    );
-  } else {
-    const lmstudioConfig = getLMStudioConfig();
-    const lmstudioModels = lmstudioConfig?.models;
-    if (lmstudioConfig?.enabled && lmstudioModels && lmstudioModels.length > 0) {
-      const models: Record<string, ProviderModelConfig> = {};
-      for (const model of lmstudioModels) {
-        models[model.id] = { name: model.name, tools: model.toolSupport === 'supported' };
-      }
+    let lmstudioConnectedBaseUrl: string | null = null;
+    try {
+      validateHttpUrl(lmstudioProvider.credentials.serverUrl, 'LM Studio server URL');
+      lmstudioConnectedBaseUrl = normalizeBaseUrl(lmstudioProvider.credentials.serverUrl);
+    } catch (e) {
+      console.warn('[OpenCode Config Builder] Invalid LM Studio server URL, skipping:', e);
+    }
+    if (lmstudioConnectedBaseUrl !== null) {
       providerConfigs.push({
         id: 'lmstudio',
         npm: '@ai-sdk/openai-compatible',
         name: 'LM Studio',
-        options: { baseURL: `${lmstudioConfig.baseUrl}/v1` },
-        models,
+        options: {
+          baseURL: `${lmstudioConnectedBaseUrl}/v1`,
+        },
+        models: {
+          [modelId]: { name: modelId, tools: supportsTools },
+        },
       });
-      console.log('[OpenCode Config Builder] LM Studio (legacy) configured:', Object.keys(models));
+      console.log(
+        `[OpenCode Config Builder] LM Studio configured: ${modelId} (tools: ${supportsTools})`,
+      );
+    }
+  } else {
+    const lmstudioConfig = getLMStudioConfig();
+    const lmstudioModels = lmstudioConfig?.models;
+    if (lmstudioConfig?.enabled && lmstudioModels && lmstudioModels.length > 0) {
+      let lmstudioBaseUrl: string | null = null;
+      try {
+        validateHttpUrl(lmstudioConfig.baseUrl, 'LM Studio base URL');
+        lmstudioBaseUrl = normalizeBaseUrl(lmstudioConfig.baseUrl);
+      } catch (e) {
+        console.warn('[OpenCode Config Builder] Invalid LM Studio base URL, skipping:', e);
+      }
+      if (lmstudioBaseUrl !== null) {
+        const models: Record<string, ProviderModelConfig> = {};
+        for (const model of lmstudioModels) {
+          models[model.id] = { name: model.name, tools: model.toolSupport === 'supported' };
+        }
+        providerConfigs.push({
+          id: 'lmstudio',
+          npm: '@ai-sdk/openai-compatible',
+          name: 'LM Studio',
+          options: { baseURL: `${lmstudioBaseUrl}/v1` },
+          models,
+        });
+        console.log(
+          '[OpenCode Config Builder] LM Studio (legacy) configured:',
+          Object.keys(models),
+        );
+      }
     }
   }
 
